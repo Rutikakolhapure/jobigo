@@ -1,0 +1,9 @@
+[
+  {
+    "model": "apps.seeker.skill",
+    "pk": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "fields": {
+      "name": "Python"
+    }
+  }
+]
