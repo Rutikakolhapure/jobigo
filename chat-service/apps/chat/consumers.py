@@ -6,23 +6,36 @@ from django.conf import settings
 from .repositories import MessageRepository
 from .services import PresenceService
 
+
+def _extract_token_from_scope(scope):
+    # Check Authorization header first (supports 'Bearer <token>' or raw token)
+    headers = dict((k.decode('latin1'), v.decode('latin1')) for k, v in scope.get('headers', []))
+    auth = headers.get('authorization') or headers.get('Authorization')
+    if auth:
+        if auth.lower().startswith('bearer '):
+            return auth.split(' ', 1)[1]
+        return auth
+    # Fallback to query string token
+    query_string = scope.get('query_string', b'').decode()
+    token = None
+    if 'token=' in query_string:
+        parts = query_string.split('&')
+        for p in parts:
+            if p.startswith('token='):
+                token = p.split('token=')[1]
+    return token
+
 class ChatConsumer(AsyncWebsocketConsumer):
     """WebSocket consumer for one-to-one chat.
 
     Connection URL: ws://host/ws/chat/<room_name>/?token=JWT
+    Also supports Authorization header: 'Authorization: Bearer <JWT>'
     """
 
     async def connect(self):
         # Authenticate token
         self.room_name = self.scope['url_route']['kwargs']['room_name']
-        query_string = self.scope.get('query_string', b'').decode()
-        token = None
-        if 'token=' in query_string:
-            # crude parse
-            parts = query_string.split('&')
-            for p in parts:
-                if p.startswith('token='):
-                    token = p.split('token=')[1]
+        token = _extract_token_from_scope(self.scope)
         self.user = None
         if token:
             try:

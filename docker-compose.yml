@@ -99,6 +99,7 @@ services:
       - DB_USER=chat_user
       - DB_PASSWORD=chat_password
       - REDIS_URL=redis://redis:6379/0
+      - AUTH_JWT_ALGORITHM=HS256
     depends_on:
       - mysql_chat
       - redis
@@ -128,6 +129,13 @@ services:
       - seeker-service
       - chat-service
       - ai-service
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - gateway
 
 volumes:
   auth_db_data:
