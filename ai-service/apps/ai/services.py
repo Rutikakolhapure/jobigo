@@ -5,12 +5,6 @@ import requests
 from django.conf import settings
 from .models import Embedding
 
-try:
-    import openai
-    openai.api_key = settings.OPENAI_API_KEY
-except Exception:
-    openai = None
-
 class EmbeddingService:
     @staticmethod
     def _to_vector(obj):
@@ -21,20 +15,26 @@ class EmbeddingService:
         return np.array([], dtype=float)
 
     @staticmethod
-    def generate_embedding(text):
-        """Generate embedding for text using OpenAI if available, otherwise deterministic fallback."""
-        if settings.OPENAI_API_KEY and openai:
-            try:
-                resp = openai.Embedding.create(model=settings.OPENAI_MODEL, input=text)
-                vec = resp['data'][0]['embedding']
-                return vec
-            except Exception:
-                pass
-        # Deterministic fallback: use simple hashing to vector
+    def generate_embedding(text, dim=128):
+        """Deterministic, local embedding generator using SHA-512 hashing.
+
+        Produces a fixed-length vector of floats in [0,1]. This avoids any paid APIs
+        and is deterministic for the same input text. Not a replacement for high-
+        quality embeddings but sufficient for demo and offline semantic matching.
+        """
         import hashlib
-        h = hashlib.sha256(text.encode('utf-8')).digest()
-        # create 128-d vector from hash bytes
-        vec = [b / 255.0 for b in h]
+        # Use SHA-512 to obtain 64 bytes, expand to desired dim by repeated hashing
+        vec = []
+        seed = text.encode('utf-8')
+        counter = 0
+        while len(vec) < dim:
+            hasher = hashlib.sha512()
+            hasher.update(seed)
+            hasher.update(counter.to_bytes(2, 'big'))
+            digest = hasher.digest()
+            vec.extend([b / 255.0 for b in digest])
+            counter += 1
+        vec = vec[:dim]
         return vec
 
     @staticmethod

@@ -1,5 +1,6 @@
 from .models import Message
 from django.utils import timezone
+from django.db.models import Q
 
 class MessageRepository:
     @staticmethod
@@ -18,7 +19,7 @@ class MessageRepository:
     @staticmethod
     def get_messages_between(user_a, user_b, limit=100):
         qs = Message.objects.filter(
-            models.Q(sender_id=user_a, receiver_id=user_b) | models.Q(sender_id=user_b, receiver_id=user_a)
+            Q(sender_id=user_a, receiver_id=user_b) | Q(sender_id=user_b, receiver_id=user_a)
         ).order_by('-created_at')[:limit]
         return list(qs[::-1])
 
