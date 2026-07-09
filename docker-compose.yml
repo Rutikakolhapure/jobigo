@@ -1,0 +1,255 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: jobigo-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: auth_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - jobigo-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: jobigo-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - jobigo-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 20s
+      retries: 10
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: jobigo-auth-service
+    command: >
+      sh -c "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8001 --workers 4"
+    environment:
+      - DEBUG=${DEBUG}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - DB_ENGINE=${AUTH_DB_ENGINE}
+      - DB_NAME=${AUTH_DB_NAME}
+      - DB_USER=${AUTH_DB_USER}
+      - DB_PASSWORD=${AUTH_DB_PASSWORD}
+      - DB_HOST=${AUTH_DB_HOST}
+      - DB_PORT=${AUTH_DB_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - EMAIL_BACKEND=${EMAIL_BACKEND}
+    ports:
+      - "8001:8001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - jobigo-network
+    volumes:
+      - ./services/auth-service:/app
+
+  # Company Service
+  company-service:
+    build:
+      context: ./services/company-service
+      dockerfile: Dockerfile
+    container_name: jobigo-company-service
+    command: >
+      sh -c "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8002 --workers 4"
+    environment:
+      - DEBUG=${DEBUG}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - DB_ENGINE=${COMPANY_DB_ENGINE}
+      - DB_NAME=${COMPANY_DB_NAME}
+      - DB_USER=${COMPANY_DB_USER}
+      - DB_PASSWORD=${COMPANY_DB_PASSWORD}
+      - DB_HOST=${COMPANY_DB_HOST}
+      - DB_PORT=${COMPANY_DB_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+    ports:
+      - "8002:8002"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    networks:
+      - jobigo-network
+    volumes:
+      - ./services/company-service:/app
+
+  # Seeker Service
+  seeker-service:
+    build:
+      context: ./services/seeker-service
+      dockerfile: Dockerfile
+    container_name: jobigo-seeker-service
+    command: >
+      sh -c "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8003 --workers 4"
+    environment:
+      - DEBUG=${DEBUG}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - DB_ENGINE=${SEEKER_DB_ENGINE}
+      - DB_NAME=${SEEKER_DB_NAME}
+      - DB_USER=${SEEKER_DB_USER}
+      - DB_PASSWORD=${SEEKER_DB_PASSWORD}
+      - DB_HOST=${SEEKER_DB_HOST}
+      - DB_PORT=${SEEKER_DB_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - COMPANY_SERVICE_URL=${COMPANY_SERVICE_URL}
+    ports:
+      - "8003:8003"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    networks:
+      - jobigo-network
+    volumes:
+      - ./services/seeker-service:/app
+
+  # Chat Service (ASGI)
+  chat-service:
+    build:
+      context: ./services/chat-service
+      dockerfile: Dockerfile
+    container_name: jobigo-chat-service
+    command: >
+      sh -c "python manage.py migrate && daphne -b 0.0.0.0 -p 8004 config.asgi:application"
+    environment:
+      - DEBUG=${DEBUG}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - DB_ENGINE=${CHAT_DB_ENGINE}
+      - DB_NAME=${CHAT_DB_NAME}
+      - DB_USER=${CHAT_DB_USER}
+      - DB_PASSWORD=${CHAT_DB_PASSWORD}
+      - DB_HOST=${CHAT_DB_HOST}
+      - DB_PORT=${CHAT_DB_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+    ports:
+      - "8004:8004"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    networks:
+      - jobigo-network
+    volumes:
+      - ./services/chat-service:/app
+
+  # AI Service
+  ai-service:
+    build:
+      context: ./services/ai-service
+      dockerfile: Dockerfile
+    container_name: jobigo-ai-service
+    command: >
+      sh -c "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8005 --workers 4"
+    environment:
+      - DEBUG=${DEBUG}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - DB_ENGINE=${AI_DB_ENGINE}
+      - DB_NAME=${AI_DB_NAME}
+      - DB_USER=${AI_DB_USER}
+      - DB_PASSWORD=${AI_DB_PASSWORD}
+      - DB_HOST=${AI_DB_HOST}
+      - DB_PORT=${AI_DB_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - COMPANY_SERVICE_URL=${COMPANY_SERVICE_URL}
+      - SEEKER_SERVICE_URL=${SEEKER_SERVICE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION}
+    ports:
+      - "8005:8005"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    networks:
+      - jobigo-network
+    volumes:
+      - ./services/ai-service:/app
+
+  # Nginx Gateway
+  nginx:
+    image: nginx:alpine
+    container_name: jobigo-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - company-service
+      - seeker-service
+      - chat-service
+      - ai-service
+    networks:
+      - jobigo-network
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: jobigo-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost
+      - VITE_WS_URL=ws://localhost
+    depends_on:
+      - nginx
+    networks:
+      - jobigo-network
+    volumes:
+      - ./frontend/src:/app/src
+
+networks:
+  jobigo-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  redis_data:
